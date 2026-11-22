@@ -28,7 +28,7 @@ This bot acts as a personal recruiter. It operates 24/7, instantly reacting to j
 - **Queue/State Management:** Redis + BullMQ (to prevent rate-limiting and track applied jobs)
 - **Database:** PostgreSQL or SQLite (to log successfully applied jobs and avoid duplicates)
 
-## 🗺️ Roadmap
+## Roadmap
 - [ ] **Phase 1: Discord Listener:** Setup the bot, connect to the Zapply server, and log new messages to the console.
 - [ ] **Phase 2: Data Parsing:** Build regex/LLM logic to extract Company, Role, and Application Link from the Discord message.
 - [ ] **Phase 3: AI Tailoring:** Integrate OpenAI to dynamically generate a cover letter based on the parsed job description.
@@ -36,5 +36,5 @@ This bot acts as a personal recruiter. It operates 24/7, instantly reacting to j
 - [ ] **Phase 5: Auto-Apply (Email):** Automate sending the email with attachments via SMTP.
 - [ ] **Phase 6: Dashboard:** Build a Next.js dashboard to track application success rates and view generated documents.
 
-## ⚠️ Disclaimer
+## Disclaimer
 This tool is built for educational purposes to explore AI and automation. Users are responsible for ensuring they comply with the Terms of Service of the platforms they interact with. Always review AI-generated documents before submitting them to real employers.
