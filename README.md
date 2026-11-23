@@ -4,6 +4,10 @@
 
 An end-to-end automation pipeline that monitors the **Zapply Discord Server** for new job listings, dynamically tailors a CV and generates a cover letter using AI, and autonomously submits applications on the user's behalf.
 
+# Simplify Auto-Apply Bot
+
+This is another end-to-end automation pipeline that monitors the **Simplify Website** for new job listings, that curates a CV and generates a cover letter using AI, and autonmously submits applications on the user's behalf.
+
 ## The Problem
 Applying for software engineering internships and jobs is a full-time job in itself. Job listings on Discord servers (like Zapply) are posted rapidly and often have a short window before the role is filled. Manually reading, tailoring a CV, writing a cover letter, and applying takes hours. 
 
