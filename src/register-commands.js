@@ -9,4 +9,5 @@ const route = config.discordGuildId
   : Routes.applicationCommands(config.discordClientId);
 
 await rest.put(route, { body: commandData });
-console.log(\`Registered \${commandData.length} slash command(s) \${config.discordGuildId ? 'for the test server' : 'globally'}.\`);
+console.log('Registered ' + commandData.length + ' slash command(s) '
+  + (config.discordGuildId ? 'for the test server' : 'globally') + '.');
