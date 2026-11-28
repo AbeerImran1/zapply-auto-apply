@@ -2,10 +2,15 @@ import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { loadConfig } from './config.js';
 import { initialiseAI, parseJobPost } from './ai.js';
 import { addJob, listJobs, recoverInterruptedPreparations } from './storage.js';
-import { enqueueAutoApplication } from './autopilot.js';
+import { enqueueAutoApplication, loadApplicationProfile, validateCandidateDocuments } from './autopilot.js';
 import { handleCommand } from './commands.js';
 
 const config = loadConfig();
+if (config.autoApply.enabled) {
+  await loadApplicationProfile(config.applicationProfileFile);
+  await validateCandidateDocuments(config);
+  console.log('Autopilot profile and candidate documents passed startup validation.');
+}
 const recoveredPreparations = await recoverInterruptedPreparations(config.dataFile);
 if (recoveredPreparations > 0) {
   console.log('Recovered ' + recoveredPreparations + ' interrupted preparation(s).');
