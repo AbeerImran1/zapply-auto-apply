@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hostIsAllowed, emailDomainIsAllowed, protectedQuestion, resolveCandidateValue } from '../src/web-applier.js';
 import { jobMatchesPreferences } from '../src/autopilot.js';
+import { parseAllowedHosts, parseBoolean } from '../src/config.js';
 
 const profile = {
   personal: { firstName: 'Alex', lastName: 'Example', email: 'alex@example.com', city: 'London' },
@@ -51,4 +52,18 @@ test('job preferences include allowed target roles and exclude unwanted posts', 
   assert.equal(jobMatchesPreferences(job, { ...profile.preferences, keywords: ['retail assistant'] }), false);
   assert.equal(jobMatchesPreferences(job, { ...profile.preferences, excludeKeywords: ['software engineering'] }), false);
   assert.equal(jobMatchesPreferences({ ...job, location: 'Manchester' }, profile.preferences), false);
+});
+
+test('autopilot config accepts bare HTTPS hostnames and rejects wildcards or paths', () => {
+  assert.deepEqual([...parseAllowedHosts('greenhouse.io, jobs.lever.co')], ['greenhouse.io', 'jobs.lever.co']);
+  assert.throws(() => parseAllowedHosts('*.example.com'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
+  assert.throws(() => parseAllowedHosts('example.com/apply'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
+  assert.throws(() => parseAllowedHosts('http://example.com'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
+});
+
+test('boolean configuration is explicit and validates invalid values', () => {
+  assert.equal(parseBoolean(undefined, false), false);
+  assert.equal(parseBoolean('true'), true);
+  assert.equal(parseBoolean('0'), false);
+  assert.throws(() => parseBoolean('sometimes'), /must be true or false/);
 });
