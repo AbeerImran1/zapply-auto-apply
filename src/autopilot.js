@@ -45,7 +45,9 @@ async function withinDailyLimit(config) {
   const jobs = await listJobs(config.dataFile);
   const today = new Date().toISOString().slice(0, 10);
   const completed = jobs.filter((job) => {
-    const timestamp = job.webSubmittedAt || job.sentAt || job.sendStartedAt || job.webStartedAt;
+    const timestamp = job.webSubmittedAt || job.sentAt
+      || (job.deliveryState === 'sending' ? job.sendStartedAt : '')
+      || (['web_sending', 'web_unknown'].includes(job.deliveryState) ? job.webStartedAt : '');
     return timestamp && timestamp.slice(0, 10) === today;
   }).length;
   return completed < config.autoApply.maxPerDay;
@@ -92,7 +94,7 @@ export async function runAutoApplication(jobId, config, logger = console) {
     logger.error('Auto-apply profile could not be loaded: ' + error.message);
     return { outcome: 'profile_error', reason: error.message };
   }
-  if (!jobMatchesPreferences(job, profile.preferences ?? {})) {
+  if (job.status === 'new' && !jobMatchesPreferences(job, profile.preferences ?? {})) {
     await updateJobIf(config.dataFile, jobId,
       (current) => current.status === 'new',
       (current) => ({ ...current, status: 'filtered_out', filteredAt: new Date().toISOString() }));
