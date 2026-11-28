@@ -7,7 +7,7 @@ import { handleCommand } from './commands.js';
 const config = loadConfig();
 const recoveredPreparations = await recoverInterruptedPreparations(config.dataFile);
 if (recoveredPreparations > 0) {
-  console.log(\`Recovered \${recoveredPreparations} interrupted preparation(s). Run /prepare again if needed.\`);
+  console.log('Recovered ' + recoveredPreparations + ' interrupted preparation(s). Run /prepare again if needed.');
 }
 initialiseAI(config);
 
@@ -16,8 +16,8 @@ const client = new Client({
 });
 
 client.once(Events.ClientReady, (readyClient) => {
-  console.log(\`Zapply is online as \${readyClient.user.tag}.\`);
-  console.log(\`Monitoring \${config.allowedChannelIds.size} configured channel(s).\`);
+  console.log('Zapply is online as ' + readyClient.user.tag + '.');
+  console.log('Monitoring ' + config.allowedChannelIds.size + ' configured channel(s).');
 });
 
 client.on(Events.MessageCreate, async (message) => {
@@ -32,7 +32,7 @@ client.on(Events.MessageCreate, async (message) => {
   if (!/\b(job|jobs|hiring|vacancy|vacancies|internship|internships|graduate|position|role|recruitment|apply|application|opportunity|we are looking|we're looking)\b/i.test(text)) return;
 
   try {
-    const sourceUrl = \`https://discord.com/channels/\${message.guildId}/\${message.channelId}/\${message.id}\`;
+    const sourceUrl = 'https://discord.com/channels/' + message.guildId + '/' + message.channelId + '/' + message.id;
     const parsed = await parseJobPost(text, sourceUrl);
     if (!parsed.isJobPost || parsed.confidence < 0.55 || !parsed.role || !parsed.company) return;
     const result = await addJob(config.dataFile, {
@@ -42,9 +42,9 @@ client.on(Events.MessageCreate, async (message) => {
       deadline: parsed.deadline, confidence: parsed.confidence, sourceUrl,
       sourceMessageId: message.id, sourceChannelId: message.channelId,
     });
-    if (result.added) console.log(\`Detected job \${result.job.id}: \${result.job.role} at \${result.job.company}\`);
+    if (result.added) console.log('Detected job ' + result.job.id + ': ' + result.job.role + ' at ' + result.job.company);
   } catch (error) {
-    console.error(\`Could not process Discord message \${message.id}: \${error.message}\`);
+    console.error('Could not process Discord message ' + message.id + ': ' + error.message);
   }
 });
 
@@ -52,7 +52,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   try { await handleCommand(interaction, config); }
   catch (error) {
-    console.error(\`Command /\${interaction.commandName} failed: \${error.message}\`);
+    console.error('Command /' + interaction.commandName + ' failed: ' + error.message);
     const message = 'Something went wrong. Check the bot console for details.';
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({ content: message, ephemeral: true }).catch(() => {});
