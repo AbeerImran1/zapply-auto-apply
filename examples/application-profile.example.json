@@ -1,0 +1,46 @@
+{
+  "personal": {
+    "firstName": "REPLACE_WITH_YOUR_FIRST_NAME",
+    "lastName": "REPLACE_WITH_YOUR_LAST_NAME",
+    "email": "REPLACE_WITH_YOUR_EMAIL",
+    "phone": "",
+    "city": "",
+    "country": "United Kingdom",
+    "postalCode": "",
+    "linkedinUrl": "",
+    "githubUrl": "",
+    "portfolioUrl": ""
+  },
+  "workAuthorisation": {
+    "authorisedToWork": null,
+    "requiresSponsorship": null
+  },
+  "preferences": {
+    "keywords": [
+      "junior developer",
+      "software developer",
+      "IT support",
+      "technical support",
+      "technology internship"
+    ],
+    "excludeKeywords": [
+      "unpaid",
+      "commission only"
+    ],
+    "locations": [
+      "London",
+      "Remote",
+      "Hybrid"
+    ],
+    "employmentTypes": [
+      "full-time",
+      "part-time",
+      "internship",
+      "graduate"
+    ]
+  },
+  "answers": {
+    "Notice period": "",
+    "Salary expectations": ""
+  }
+}
