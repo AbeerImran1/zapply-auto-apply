@@ -164,7 +164,8 @@ export async function submitApplicationWithBrowser({ job, profile, pack, config 
       const meta = await inspectField(field);
       if (meta.disabled || ['hidden', 'submit', 'button', 'reset', 'image'].includes(meta.type)) continue;
       if (['checkbox', 'radio'].includes(meta.type)) {
-        if (meta.required && !meta.checked) unresolved.push(meta.label || meta.name || meta.id || 'Required consent/choice');
+        if (meta.required) unresolved.push(meta.label || meta.name || meta.id || 'Required consent/choice');
+        else if (meta.checked) await field.uncheck().catch(() => {});
         continue;
       }
       if (meta.type === 'password') {
