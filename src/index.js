@@ -60,7 +60,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   if (config.autoApply.enabled) {
     // Resume queued jobs after a restart. Sending/unknown states are never retried.
     const pending = await listJobs(config.dataFile);
-    for (const job of pending.filter((item) => item.status === 'new' && item.deliveryState === 'not_sent')) {
+    for (const job of pending.filter((item) => (item.status === 'new' || (item.status === 'prepared' && item.autopilot)) && item.deliveryState === 'not_sent')) {
       enqueueAutoApplication(job.id, config).catch((error) =>
         console.error('Could not resume job ' + job.id + ': ' + error.message));
     }
