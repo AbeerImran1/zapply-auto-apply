@@ -8,6 +8,7 @@
 - Added saved application profile, job preferences, explicit form-answer mapping, and one-time persistent browser sign-in helper.
 - Added daily submission cap, serial processing, startup backfill, and recovery of prepared-but-not-yet-submitted jobs.
 - Required fields with unknown answers, protected questions, login/captcha challenges, redirects, unsupported forms, and uncertain submission confirmations are skipped or locked rather than guessed or retried.
-- Added automated tests for allowlists, application field mapping, protected questions, and job preferences.
+- Added automated tests for allowlists, application field mapping, protected questions, job preferences, and startup rejection of placeholder candidate data.
+- Updated Playwright to the current stable 1.65 line.
 
 Live Discord/OpenAI/SMTP/browser submissions still require configuration and an actual user-environment test.
