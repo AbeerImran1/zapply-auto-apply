@@ -4,6 +4,7 @@ import { createPdfFiles } from './documents.js';
 import { sendApplicationEmail, verifySmtp } from './mailer.js';
 import { getJob, listJobs, updateJobIf } from './storage.js';
 import { emailDomainIsAllowed, hostIsAllowed, submitApplicationWithBrowser } from './web-applier.js';
+import { isEmail } from './utils.js';
 
 let queue = Promise.resolve();
 
@@ -13,19 +14,51 @@ export function enqueueAutoApplication(jobId, config, logger = console) {
   return task;
 }
 
-export async function loadApplicationProfile(filePath) {
-  const profile = JSON.parse(await readFile(filePath, 'utf8'));
+export function validateApplicationProfile(profile) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     throw new Error('Application profile must be a JSON object.');
   }
   const personal = profile.personal ?? {};
-  if (!personal.firstName || !personal.lastName || !personal.email) {
-    throw new Error('Set personal.firstName, personal.lastName, and personal.email in the application profile.');
+  for (const field of ['firstName', 'lastName']) {
+    const value = String(personal[field] ?? '').trim();
+    if (!value || /replace[_ -]?with|your[_ -]?name|placeholder/i.test(value)) {
+      throw new Error('Replace the personal.' + field + ' placeholder with your real details.');
+    }
   }
-  if (!Array.isArray(profile.preferences?.keywords) || profile.preferences.keywords.length === 0) {
-    throw new Error('Set at least one target keyword in preferences.keywords before enabling autopilot.');
+  if (!isEmail(personal.email) || /@example\.(com|org|net)$/i.test(String(personal.email))) {
+    throw new Error('Set a real personal.email address in the application profile.');
+  }
+  if (!Array.isArray(profile.preferences?.keywords) || profile.preferences.keywords.length === 0
+      || profile.preferences.keywords.some((keyword) => typeof keyword !== 'string' || !keyword.trim())) {
+    throw new Error('Set at least one real target keyword in preferences.keywords before enabling autopilot.');
+  }
+  const work = profile.workAuthorisation ?? {};
+  for (const key of ['authorisedToWork', 'requiresSponsorship']) {
+    if (work[key] !== undefined && work[key] !== null && typeof work[key] !== 'boolean') {
+      throw new Error('workAuthorisation.' + key + ' must be true, false, or null.');
+    }
   }
   return profile;
+}
+
+export async function loadApplicationProfile(filePath) {
+  return validateApplicationProfile(JSON.parse(await readFile(filePath, 'utf8')));
+}
+
+export async function validateCandidateDocuments(config) {
+  const [baseCv, profileText] = await Promise.all([
+    readFile(config.baseCvFile, 'utf8'), readFile(config.profileFile, 'utf8'),
+  ]);
+  if (!baseCv.trim() || !profileText.trim()) throw new Error('Base CV or profile is empty.');
+  const templateMarkers = [
+    'your.email@example.com', 'skill you can genuinely demonstrate',
+    'describe what you actually did', 'write a short factual summary', 'target roles: e.g.',
+  ];
+  const source = (baseCv + '\\n' + profileText).toLowerCase();
+  if (templateMarkers.some((marker) => source.includes(marker))) {
+    throw new Error('Replace the example CV/profile template text with your real employment, education, and skills before enabling autopilot.');
+  }
+  return { baseCv, profileText };
 }
 
 export function jobMatchesPreferences(job, preferences = {}) {
@@ -62,10 +95,7 @@ async function prepare(job, config) {
   if (!claim.updated) return null;
 
   try {
-    const [baseCv, candidateProfile] = await Promise.all([
-      readFile(config.baseCvFile, 'utf8'), readFile(config.profileFile, 'utf8'),
-    ]);
-    if (!baseCv.trim() || !candidateProfile.trim()) throw new Error('Base CV or profile is empty.');
+    const { baseCv, profileText: candidateProfile } = await validateCandidateDocuments(config);
     const pack = await createApplicationPack({ job, baseCv, profile: candidateProfile });
     const files = await createPdfFiles({ generatedDir: config.generatedDir, job, pack });
     const saved = await updateJobIf(
