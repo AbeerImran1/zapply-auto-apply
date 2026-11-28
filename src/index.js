@@ -81,6 +81,21 @@ client.once(Events.ClientReady, async (readyClient) => {
   }
 });
 
+if (config.autoApply.enabled) {
+  const queueTimer = setInterval(async () => {
+    try {
+      const pending = await listJobs(config.dataFile);
+      for (const job of pending.filter((item) => (item.status === 'new' || (item.status === 'prepared' && item.autopilot)) && item.deliveryState === 'not_sent')) {
+        enqueueAutoApplication(job.id, config).catch((error) =>
+          console.error('Scheduled autopilot retry failed for ' + job.id + ': ' + error.message));
+      }
+    } catch (error) {
+      console.error('Could not scan autopilot queue: ' + error.message);
+    }
+  }, 60 * 60 * 1000);
+  queueTimer.unref();
+}
+
 client.on(Events.MessageCreate, processJobMessage);
 
 client.on(Events.InteractionCreate, async (interaction) => {
