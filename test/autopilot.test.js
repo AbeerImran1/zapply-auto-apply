@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { hostIsAllowed, emailDomainIsAllowed, protectedQuestion, resolveCandidateValue } from '../src/web-applier.js';
-import { jobMatchesPreferences } from '../src/autopilot.js';
+import { jobMatchesPreferences, validateApplicationProfile } from '../src/autopilot.js';
 import { parseAllowedHosts, parseBoolean } from '../src/config.js';
 
 const profile = {
@@ -66,4 +66,32 @@ test('boolean configuration is explicit and validates invalid values', () => {
   assert.equal(parseBoolean('true'), true);
   assert.equal(parseBoolean('0'), false);
   assert.throws(() => parseBoolean('sometimes'), /must be true or false/);
+});
+
+test('autopilot refuses placeholder candidate identity and example email addresses', () => {
+  assert.throws(() => validateApplicationProfile({
+    personal: { firstName: 'REPLACE_WITH_YOUR_FIRST_NAME', lastName: 'Name', email: 'person@example.com' },
+    preferences: { keywords: ['junior developer'] },
+  }), /placeholder/);
+  assert.throws(() => validateApplicationProfile({
+    personal: { firstName: 'Alex', lastName: 'Example', email: 'alex@example.com' },
+    preferences: { keywords: ['junior developer'] },
+  }), /real personal.email/);
+});
+
+test('autopilot requires real target keywords and explicit boolean work-authorisation answers', () => {
+  assert.throws(() => validateApplicationProfile({
+    personal: { firstName: 'Alex', lastName: 'Taylor', email: 'alex.taylor@mail.test' },
+    preferences: { keywords: [] },
+  }), /target keyword/);
+  assert.throws(() => validateApplicationProfile({
+    personal: { firstName: 'Alex', lastName: 'Taylor', email: 'alex.taylor@mail.test' },
+    preferences: { keywords: ['junior developer'] },
+    workAuthorisation: { authorisedToWork: 'probably' },
+  }), /true, false, or null/);
+  assert.equal(validateApplicationProfile({
+    personal: { firstName: 'Alex', lastName: 'Taylor', email: 'alex.taylor@mail.test' },
+    preferences: { keywords: ['junior developer'] },
+    workAuthorisation: { authorisedToWork: null, requiresSponsorship: false },
+  }).personal.firstName, 'Alex');
 });
