@@ -1,13 +1,19 @@
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { loadConfig } from './config.js';
 import { initialiseAI, parseJobPost } from './ai.js';
-import { addJob, recoverInterruptedPreparations } from './storage.js';
+import { addJob, listJobs, recoverInterruptedPreparations } from './storage.js';
+import { enqueueAutoApplication, loadApplicationProfile, validateCandidateDocuments } from './autopilot.js';
 import { handleCommand } from './commands.js';
 
 const config = loadConfig();
+if (config.autoApply.enabled) {
+  await loadApplicationProfile(config.applicationProfileFile);
+  await validateCandidateDocuments(config);
+  console.log('Autopilot profile and candidate documents passed startup validation.');
+}
 const recoveredPreparations = await recoverInterruptedPreparations(config.dataFile);
 if (recoveredPreparations > 0) {
-  console.log('Recovered ' + recoveredPreparations + ' interrupted preparation(s). Run /prepare again if needed.');
+  console.log('Recovered ' + recoveredPreparations + ' interrupted preparation(s).');
 }
 initialiseAI(config);
 
@@ -15,12 +21,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
 });
 
-client.once(Events.ClientReady, (readyClient) => {
-  console.log('Zapply is online as ' + readyClient.user.tag + '.');
-  console.log('Monitoring ' + config.allowedChannelIds.size + ' configured channel(s).');
-});
-
-client.on(Events.MessageCreate, async (message) => {
+async function processJobMessage(message) {
   if (message.author.bot || !config.allowedChannelIds.has(message.channelId)) return;
   const content = message.content?.trim() ?? '';
   const embedText = message.embeds
@@ -42,11 +43,65 @@ client.on(Events.MessageCreate, async (message) => {
       deadline: parsed.deadline, confidence: parsed.confidence, sourceUrl,
       sourceMessageId: message.id, sourceChannelId: message.channelId,
     });
-    if (result.added) console.log('Detected job ' + result.job.id + ': ' + result.job.role + ' at ' + result.job.company);
+    if (result.added) {
+      console.log('Detected job ' + result.job.id + ': ' + result.job.role + ' at ' + result.job.company);
+      if (config.autoApply.enabled) {
+        enqueueAutoApplication(result.job.id, config).catch((error) =>
+          console.error('Autopilot failed for ' + result.job.id + ': ' + error.message));
+      }
+    }
   } catch (error) {
     console.error('Could not process Discord message ' + message.id + ': ' + error.message);
   }
+}
+
+client.once(Events.ClientReady, async (readyClient) => {
+  console.log('Zapply is online as ' + readyClient.user.tag + '.');
+  console.log('Monitoring ' + config.allowedChannelIds.size + ' configured channel(s).');
+  console.log(config.autoApply.enabled
+    ? 'AUTOPILOT IS ENABLED. Daily cap: ' + config.autoApply.maxPerDay
+    : 'Autopilot is disabled. Set AUTO_APPLY_ENABLED=true after completing your profile and allowlist.');
+
+  if (config.autoApply.enabled) {
+    // Resume queued jobs after a restart. Sending/unknown states are never retried.
+    const pending = await listJobs(config.dataFile);
+    for (const job of pending.filter((item) => (item.status === 'new' || (item.status === 'prepared' && item.autopilot)) && item.deliveryState === 'not_sent')) {
+      enqueueAutoApplication(job.id, config).catch((error) =>
+        console.error('Could not resume job ' + job.id + ': ' + error.message));
+    }
+
+    // Backfill recent messages so starting the bot does not miss posts sent while offline.
+    for (const channelId of config.allowedChannelIds) {
+      try {
+        const channel = await readyClient.channels.fetch(channelId);
+        if (!channel?.isTextBased() || !channel.messages) continue;
+        const recent = await channel.messages.fetch({ limit: 25 });
+        for (const message of [...recent.values()].reverse()) {
+          await processJobMessage(message);
+        }
+      } catch (error) {
+        console.error('Could not backfill channel ' + channelId + ': ' + error.message);
+      }
+    }
+  }
 });
+
+if (config.autoApply.enabled) {
+  const queueTimer = setInterval(async () => {
+    try {
+      const pending = await listJobs(config.dataFile);
+      for (const job of pending.filter((item) => (item.status === 'new' || (item.status === 'prepared' && item.autopilot)) && item.deliveryState === 'not_sent')) {
+        enqueueAutoApplication(job.id, config).catch((error) =>
+          console.error('Scheduled autopilot retry failed for ' + job.id + ': ' + error.message));
+      }
+    } catch (error) {
+      console.error('Could not scan autopilot queue: ' + error.message);
+    }
+  }, 60 * 60 * 1000);
+  queueTimer.unref();
+}
+
+client.on(Events.MessageCreate, processJobMessage);
 
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;

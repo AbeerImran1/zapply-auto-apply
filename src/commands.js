@@ -45,11 +45,10 @@ export async function handleCommand(interaction, config) {
       return;
     }
     const lines = jobs.slice(0, 8).map((job) => {
-      const state = job.deliveryState === 'sent' ? 'sent'
-        : job.deliveryState === 'sending' ? 'send uncertain'
-          : job.status === 'preparing' ? 'preparing'
-            : job.approved ? 'approved'
-              : job.pack ? 'prepared' : 'needs preparation';
+      const state = job.deliveryState === 'sent' || job.deliveryState === 'web_submitted' ? 'submitted'
+        : job.deliveryState === 'sending' || job.deliveryState === 'web_sending' ? 'submission in progress'
+          : job.deliveryState === 'web_unknown' ? 'submission uncertain'
+            : String(job.status || 'unknown').replaceAll('_', ' ');
       return job.id + ' — **' + safeText(job.role, 80) + '** at '
         + safeText(job.company, 80) + ' · ' + state;
     });
@@ -74,6 +73,7 @@ export async function handleCommand(interaction, config) {
       'Location: ' + safeText(job.location, 120),
       'Type: ' + safeText(job.employmentType, 80),
       'Deadline: ' + safeText(job.deadline, 80),
+      'Status: ' + safeText(String(job.status || 'unknown').replaceAll('_', ' '), 100),
       'Application email: ' + safeText(job.applicationEmail, 160),
       'Application link: ' + applicationLink,
       'Source: ' + sourceLink,

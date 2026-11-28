@@ -1,96 +1,117 @@
 # Zapply Auto-Apply Bot
 
-A review-first Discord job assistant. It monitors selected job-post channels, detects vacancies, drafts a role-tailored CV and cover letter from your own files, and creates PDFs for you to review.
+Zapply is a Discord job-listing autopilot. Once you have configured your candidate profile, credentials, job preferences, and approved employer/ATS domains, it can run without per-application approval: detect vacancies, filter them, tailor your CV and cover letter, generate PDFs, fill supported application forms, submit them, and record the outcome. It can also send applications by email to explicitly approved recruiter domains.
 
-**You stay in control.** Zapply does not submit web forms, click employer submission buttons, accept legal declarations, or invent eligibility answers. An application email is sent only after you review the documents, run `/approve`, and explicitly run `/send`.
+**This is unattended, bounded automation—not an unrestricted form-filling agent.** It never invents candidate facts, answers demographic/medical/legal/consent declarations, bypasses CAPTCHA or bot checks, or retries a submission whose outcome is uncertain. Those cases are logged for later review.
 
-## Features
+## What it automates
 
-- Monitors only the Discord channel IDs configured in `.env`.
-- Filters likely job posts before making an OpenAI request.
-- Extracts company, role, location, employment type, deadline, application URL, and contact email.
-- Only retains an application URL or email explicitly selected by the AI when it exactly matches content in the original Discord post. It never guesses the first URL or email.
-- Stores detected jobs in a local JSON file and prevents duplicate message/link entries.
-- Uses your private base CV and profile to draft a truthful, role-specific CV, cover letter, and email.
-- Generates separate CV and cover-letter PDFs.
-- Provides owner-only slash commands: `/queue`, `/details`, `/prepare`, `/approve`, and `/send`.
-- Uses atomic state transitions to block concurrent duplicate preparation/sending.
-- Recovers interrupted document preparation after a restart, while keeping uncertain email sends locked to avoid duplicates.
+- Monitors only configured Discord job channels and backfills recent posts after a restart.
+- Uses OpenAI to detect and extract job details. AI-selected application links/emails must exactly match links/emails present in the original post.
+- Filters jobs against your saved role keywords, excluded keywords, locations, and employment types.
+- Creates a role-specific CV and cover-letter PDF using only facts in your supplied CV/profile.
+- Sends an application email when SMTP is configured and the recruiter email domain is explicitly allowlisted.
+- Otherwise uses Playwright on HTTPS application sites whose hostnames are explicitly allowlisted.
+- Fills standard identity/contact/profile fields using the saved application profile, attaches CV/cover-letter files, and submits when one unambiguous supported form and submit button are found.
+- Records submitted, skipped, filtered, failed, and uncertain jobs in the local application queue.
+- Uses a serial queue, duplicate checks, and daily cap to reduce repeated submissions.
+- Resumes eligible new/prepared applications after a restart but never retries a send/submit attempt with uncertain delivery.
+
+## What it will not automate
+
+- CAPTCHA, reCAPTCHA, hCaptcha, bot challenges, rate-limit challenges, or access restrictions.
+- Creating accounts, entering passwords, or bypassing a site's sign-in process. You may sign in once in the persistent browser profile with `npm run login-browser`.
+- Required questions that cannot be answered from your saved profile.
+- Medical, disability, demographic, religion, race, gender, age, date-of-birth, criminal-record, diversity, legal attestation, signature, consent, or terms-acceptance questions.
+- Payment details, bank details, national insurance numbers, passport/identity numbers, or other sensitive identifiers.
+- Multi-page forms, custom widgets, non-standard application flows, or forms with ambiguous submit buttons.
+- Sites or recruiter email domains that you have not allowlisted.
+- Websites whose terms prohibit automated access or applications. You are responsible for checking the rules for each site you allowlist.
+
+When a form contains a required field it cannot safely answer, Zapply stops before submission and records `needs_manual`. If it clicks submit but cannot verify a confirmation, it records `submission_unknown` and will not retry automatically.
 
 ## Requirements
 
 - Node.js 22 or newer.
-- A Discord application and bot token.
-- An OpenAI API key and a model available to your API account that supports JSON response mode.
-- SMTP credentials only if you intend to send application emails. SMTP is optional.
+- A Discord application/bot and access to the job channels.
+- An OpenAI API key and a model available to your account that supports JSON response mode.
+- Chromium (installed by `setup.bat` through Playwright).
+- SMTP credentials if you want email applications.
+- A complete, accurate candidate CV and profile.
 
 ## Setup on Windows
 
-1. Open the green **Code** menu on this GitHub page and choose **Download ZIP** for this branch, then extract it.
-2. Open the extracted `zapply-auto-apply` project folder in VS Code.
-3. Run `setup.bat` to install dependencies and create the example private files. Alternatively, run `npm install` in the terminal.
-4. Copy `.env.example` to `.env` if setup has not already done so.
-5. Edit `.env` and set:
-   - `DISCORD_TOKEN`: your Discord bot token.
-   - `DISCORD_CLIENT_ID`: the Application ID from the Discord Developer Portal.
-   - `DISCORD_OWNER_ID`: your Discord user ID. Only this user can run the bot's commands.
-   - `DISCORD_JOB_CHANNEL_IDS`: comma-separated IDs of channels the bot is allowed to monitor.
+1. Download this branch using GitHub's **Code → Download ZIP**, then extract it.
+2. Open the extracted project folder in VS Code.
+3. Run `setup.bat`. It installs dependencies, downloads Playwright Chromium, and creates private profile templates.
+4. Edit `.env` and configure:
+   - `DISCORD_TOKEN`, `DISCORD_CLIENT_ID`, `DISCORD_OWNER_ID`, and `DISCORD_JOB_CHANNEL_IDS`.
    - `OPENAI_API_KEY` and `OPENAI_MODEL`.
-6. Replace `private/base-cv.md` and `private/profile.md` with your own accurate information. These are local files and are ignored by Git.
-7. In the Discord Developer Portal:
-   - Enable **Message Content Intent** under **Bot → Privileged Gateway Intents**.
-   - Invite the bot with the `bot` and `applications.commands` scopes.
-   - Grant only the channel access it needs, plus permission to use application commands and attach files. Do not grant Administrator.
-8. In Discord, enable Developer Mode and copy your user ID and the IDs of the job channels you want to monitor.
-9. Run `npm run check`.
-10. Optionally set `DISCORD_GUILD_ID` in `.env` to your test server for faster slash-command registration. Then run `npm run register-commands`.
-11. Start the bot with `npm start` or double-click `start.bat`.
+   - `AUTO_APPLY_ALLOWED_HOSTS`: comma-separated HTTPS hostnames for job application websites/ATS providers you have checked and permit automated applications on. Examples of the syntax only: `boards.greenhouse.io,jobs.lever.co`.
+   - `AUTO_APPLY_ALLOWED_EMAIL_DOMAINS`: comma-separated recruiter email domains that may receive application emails. Use only domains you explicitly trust.
+   - `AUTO_APPLY_MAX_PER_DAY`: maximum successfully submitted applications each UTC day (1–30; default 5).
+5. Complete these local-only files:
+   - `private/base-cv.md`: your factual CV.
+   - `private/profile.md`: additional factual context for AI drafting.
+   - `private/application-profile.json`: your exact details and job preferences used for autofill.
+6. In `application-profile.json`, replace all `REPLACE_WITH_...` values. Set at least one target keyword in `preferences.keywords`. Set `workAuthorisation.authorisedToWork` and `requiresSponsorship` to `true` or `false` only when you know the correct answer; otherwise leave them `null`. Add other exact question/answer pairs under `answers` only when you know the answer.
+7. In Discord Developer Portal, enable **Message Content Intent** and invite the bot with `bot` and `applications.commands`. Give it only access to the channels it should monitor; do not grant Administrator.
+8. Run `npm run check`, then register commands with `npm run register-commands`. Set `DISCORD_GUILD_ID` first for faster test-server command registration.
+9. Leave `AUTO_APPLY_ENABLED=false` for the first run. Start with `npm start` and check that the bot connects and detects the right job posts.
+10. When your profile and host/email allowlists are complete, set `AUTO_APPLY_ENABLED=true` in `.env` and restart the bot. From then on eligible applications run without per-job approval.
 
-Keep the terminal open while the bot is running. Use `npm run dev` during development.
+Keep the terminal open while the bot is running. Use `npm run dev` during development. Run it on a machine/server that stays online to monitor Discord continuously.
 
-## Discord commands
+## One-time sign-in for an approved job site
 
+Some job boards require an account. Add the site's hostname to `AUTO_APPLY_ALLOWED_HOSTS`, then run:
+
+```powershell
+npm run login-browser -- https://approved-job-site.example
+```
+
+A visible Chromium window opens using Zapply's persistent browser profile. Sign in normally yourself and press Enter in the terminal when finished. Cookies/session data remain in `private/browser-profile` and are ignored by Git. Do not use this to bypass a CAPTCHA or a site's access controls. Zapply still stops when a site asks for an unsupported or sensitive required answer.
+
+## Autopilot settings
+
+| Setting | Meaning |
+|---|---|
+| `AUTO_APPLY_ENABLED` | Must be `true` to automatically prepare and submit eligible applications. Defaults to `false`. |
+| `AUTO_APPLY_ALLOWED_HOSTS` | Exact trusted HTTPS site domains for browser applications; subdomains are allowed. |
+| `AUTO_APPLY_ALLOWED_EMAIL_DOMAINS` | Exact trusted recruiter email domains; subdomains are allowed. |
+| `AUTO_APPLY_MAX_PER_DAY` | Daily successful submission cap, 1–30; default 5. |
+| `AUTO_APPLY_HEADLESS` | Run browser headlessly; default `true`. |
+| `BROWSER_PROFILE_DIR` | Persistent browser cookies/session directory. Keep private. |
+
+Autopilot requires a completed JSON profile with first name, last name, email, and at least one target keyword. It also requires at least one application route: an allowed web hostname, or SMTP plus an allowed recruiter email domain.
+
+## Manual commands and monitoring
+
+Slash commands are owner-only:
 | Command | Purpose |
 |---|---|
-| `/queue` | List recently detected jobs and their state. |
-| `/details id:<id>` | Show job details, the original source post, application link, and selected contact email. |
-| `/prepare id:<id>` | Generate the tailored CV and cover-letter PDFs. |
-| `/approve id:<id>` | Record that you have reviewed the generated PDFs. |
-| `/send id:<id>` | Send the approved PDFs to the selected email address from the original post. |
+| `/queue` | List detected jobs and statuses. |
+| `/details id:<id>` | Inspect a job and its source/application link. |
+| `/prepare id:<id>` | Generate documents manually. |
+| `/approve id:<id>` | Approve a manually prepared application. |
+| `/send id:<id>` | Send a manually approved email application. |
 
-Use the short ID shown by `/queue`. If the job post does not contain a clearly selected email address, use the application URL and apply manually. Check `/details` before approving so you can verify the employer, role, link, and recipient.
+Typical autopilot states include `filtered_out`, `prepared`, `sent`, `web_submitted`, `needs_manual`, `needs_configuration`, `failed_preparation`, and `submission_unknown`. The detailed record is stored locally in `data/jobs.json`.
 
-## Optional SMTP setup
+## Privacy and safety
 
-To enable `/send`, configure all of these values in `.env`:
-
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`.
-
-Port 587 normally uses `SMTP_SECURE=false`; port 465 normally uses `SMTP_SECURE=true`. Use an app password or provider-approved credential. Do not commit `.env`.
-
-The bot verifies SMTP before taking the sending lock. If a failure occurs after an actual send attempt begins, delivery may be ambiguous; the job stays locked against automatic resending. Check your Sent folder and provider logs before doing anything else.
+- Never commit `.env`, your CV, candidate profile, generated PDFs, browser cookies/session data, bot tokens, or API keys. These paths are in `.gitignore`.
+- Candidate CV/profile text and each job description are sent to OpenAI for drafting. Check your API provider's data-handling terms.
+- Recruiter application emails may contain your CV and cover letter. Use only approved sender/recipient accounts and trusted email domains.
+- Restrict monitored Discord channels to sources you trust. Anyone who can post there may cause a job to be analysed.
+- Review every site’s terms and any anti-automation rules before adding its hostname. Do not use this tool to evade access controls, account restrictions, bot protections, or application limits.
+- Job-board HTML changes frequently. The form runner supports ordinary visible HTML forms only; unsupported workflows are skipped.
+- A successful browser click is not proof of successful submission. The bot requires a visible confirmation message; uncertain results are never retried automatically.
+- Local JSON storage is designed for one bot process on one machine. Do not run multiple instances against the same data directory.
 
 ## Tests
 
-Run `npm run check` or double-click `check.bat`. The check validates JavaScript/MJS syntax and runs 14 automated tests covering storage, duplicate prevention, atomic state transitions, recovery after interrupted preparation, link/email selection, validation, and Discord text escaping.
-
-The tests do not contact Discord, OpenAI, or an SMTP provider. Live service configuration and login still need to be completed on your machine.
-
-## Current limitations
-
-- Storage is a local JSON file intended for one bot process on one machine. Multi-instance hosting needs a database and distributed locking.
-- The bot analyses Discord message and embed text only. It does not OCR images or inspect attached documents.
-- There is no web-form automation, job-board login, dashboard, or automatic application status tracking.
-- AI-generated documents are drafts. Verify every claim, date, qualification, and contact detail before use.
-- The bot never answers sensitive eligibility, identity, payment, or legal-declaration questions on your behalf.
-
-## Privacy and security
-
-- Never commit `.env`, your CV, profile, generated PDFs, bot tokens, or API keys.
-- Only monitor channels you are allowed to access and trust. Members able to post in those channels can trigger job-post analysis.
-- Slash commands are restricted to `DISCORD_OWNER_ID`.
-- Your CV/profile text and the job description are sent to OpenAI when you run `/prepare`. Review your API provider's data-handling terms first.
-- The bot does not submit web forms or complete sensitive identity, payment, or legal-declaration fields.
+Run `npm run check` or `check.bat`. The tests cover job storage, duplicate protection, restart recovery, link/email extraction, host/email allowlists, profile-field mapping, protected questions, preferences, and Discord text escaping. CI verifies syntax and tests but does not log into Discord, use your OpenAI account, send emails, or submit live applications.
 
 ## License
 
