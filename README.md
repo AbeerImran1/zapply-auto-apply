@@ -26,8 +26,8 @@ A review-first Discord job assistant. It monitors selected job-post channels, de
 
 ## Setup on Windows
 
-1. Download and extract the [Zapply source archive](./zapply-auto-apply-source.zip).
-2. Open the extracted `zapply-auto-apply` folder in VS Code.
+1. Open the green **Code** menu on this GitHub page and choose **Download ZIP** for this branch, then extract it.
+2. Open the extracted `zapply-auto-apply` project folder in VS Code.
 3. Run `setup.bat` to install dependencies and create the example private files. Alternatively, run `npm install` in the terminal.
 4. Copy `.env.example` to `.env` if setup has not already done so.
 5. Edit `.env` and set:
