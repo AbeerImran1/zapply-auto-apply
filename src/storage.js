@@ -14,14 +14,14 @@ async function readStore(filePath) {
     return parsed;
   } catch (error) {
     if (error.code === 'ENOENT') return emptyStore();
-    throw new Error(\`Could not read \${filePath}: \${error.message}\`);
+    throw new Error('Could not read ' + filePath + ': ' + error.message);
   }
 }
 
 async function writeStore(filePath, store) {
   await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = \`\${filePath}.tmp\`;
-  await writeFile(tempPath, \`\${JSON.stringify(store, null, 2)}\n\`, { encoding: 'utf8', mode: 0o600 });
+  const tempPath = filePath + '.tmp';
+  await writeFile(tempPath, JSON.stringify(store, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
   await rename(tempPath, filePath);
 }
 
