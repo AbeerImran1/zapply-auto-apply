@@ -70,6 +70,6 @@ export function normaliseParsedJob(result, messageText) {
 
 export function escapeDiscordText(value, maxLength = 700) {
   return trimText(value || 'Not provided', maxLength)
-    .replace(/[\\\`*_{}\[\]()<>|~]/g, '\\$&')
+    .replace(/[\\\x60*_{}\[\]()<>|~]/g, '\\$&')
     .replace(/@/g, '@\u200b');
 }
