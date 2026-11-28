@@ -45,7 +45,7 @@ async function withinDailyLimit(config) {
   const jobs = await listJobs(config.dataFile);
   const today = new Date().toISOString().slice(0, 10);
   const completed = jobs.filter((job) => {
-    const timestamp = job.webSubmittedAt || job.sentAt;
+    const timestamp = job.webSubmittedAt || job.sentAt || job.sendStartedAt || job.webStartedAt;
     return timestamp && timestamp.slice(0, 10) === today;
   }).length;
   return completed < config.autoApply.maxPerDay;
@@ -116,7 +116,7 @@ export async function runAutoApplication(jobId, config, logger = console) {
     catch (error) {
       await updateJobIf(config.dataFile, jobId,
         (current) => current.status === 'prepared',
-        (current) => ({ ...current, status: 'needs_configuration', lastError: 'SMTP verification failed: ' + error.message }));
+        (current) => ({ ...current, status: 'prepared', lastError: 'SMTP verification failed: ' + error.message }));
       return { outcome: 'needs_configuration', reason: error.message };
     }
     const claim = await updateJobIf(config.dataFile, jobId,
