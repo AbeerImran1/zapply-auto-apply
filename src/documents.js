@@ -29,10 +29,10 @@ function renderPdf({ filePath, title, content }) {
 
 export async function createPdfFiles({ generatedDir, job, pack }) {
   await mkdir(generatedDir, { recursive: true });
-  const prefix = \`\${safeFilePart(job.company)}-\${safeFilePart(job.role)}-\${job.id}\`;
-  const cvPath = path.join(generatedDir, \`\${prefix}-cv.pdf\`);
-  const coverPath = path.join(generatedDir, \`\${prefix}-cover-letter.pdf\`);
-  await renderPdf({ filePath: cvPath, title: \`CV — \${job.role} at \${job.company}\`, content: pack.tailoredCv });
-  await renderPdf({ filePath: coverPath, title: \`Cover Letter — \${job.role} at \${job.company}\`, content: pack.coverLetter });
+  const prefix = safeFilePart(job.company) + '-' + safeFilePart(job.role) + '-' + job.id;
+  const cvPath = path.join(generatedDir, prefix + '-cv.pdf');
+  const coverPath = path.join(generatedDir, prefix + '-cover-letter.pdf');
+  await renderPdf({ filePath: cvPath, title: 'CV — ' + job.role + ' at ' + job.company, content: pack.tailoredCv });
+  await renderPdf({ filePath: coverPath, title: 'Cover Letter — ' + job.role + ' at ' + job.company, content: pack.coverLetter });
   return { cvPath, coverPath };
 }
