@@ -4,7 +4,7 @@ import { isEmail } from './utils.js';
 
 function required(name) {
   const value = process.env[name]?.trim();
-  if (!value) throw new Error(`Missing required environment variable: ${name}`);
+  if (!value) throw new Error('Missing required environment variable: ' + name);
   return value;
 }
 
@@ -18,19 +18,41 @@ function parsePort(value, fallback = 587) {
 
 function parseSnowflakeList(value, name) {
   const values = String(value ?? '').split(',').map((item) => item.trim()).filter(Boolean);
-  if (!values.length) throw new Error(`Set ${name} to at least one Discord ID.`);
+  if (!values.length) throw new Error('Set ' + name + ' to at least one Discord ID.');
   if (values.some((item) => !/^\d{17,20}$/.test(item))) {
-    throw new Error(`${name} must contain comma-separated Discord snowflake IDs.`);
+    throw new Error(name + ' must contain comma-separated Discord snowflake IDs.');
   }
   return values;
 }
 
-function parseBoolean(value, fallback = false) {
+export function parseBoolean(value, fallback = false, name = 'boolean setting') {
   if (value == null || value === '') return fallback;
   const normalized = String(value).trim().toLowerCase();
   if (['true', '1', 'yes'].includes(normalized)) return true;
   if (['false', '0', 'no'].includes(normalized)) return false;
-  throw new Error('SMTP_SECURE must be true or false.');
+  throw new Error(name + ' must be true or false.');
+}
+
+export function parseAllowedHosts(value) {
+  return new Set(String(value ?? '').split(',').map((item) => {
+    const candidate = item.trim().toLowerCase();
+    if (!candidate) return '';
+    const withScheme = candidate.includes('://') ? candidate : 'https://' + candidate;
+    let hostname;
+    try {
+      const url = new URL(withScheme);
+      if (url.protocol !== 'https:' || url.username || url.password || url.port || url.pathname !== '/' || url.search || url.hash) {
+        throw new Error('Only bare HTTPS hostnames are allowed.');
+      }
+      hostname = url.hostname;
+    } catch {
+      throw new Error('Invalid AUTO_APPLY_ALLOWED_HOSTS entry: ' + candidate);
+    }
+    if (hostname === 'localhost' || !hostname.includes('.') || hostname.includes('*')) {
+      throw new Error('AUTO_APPLY_ALLOWED_HOSTS must contain real hostnames, not wildcards or local addresses.');
+    }
+    return hostname;
+  }).filter(Boolean));
 }
 
 export function loadConfig() {
@@ -51,6 +73,16 @@ export function loadConfig() {
   const guildId = process.env.DISCORD_GUILD_ID?.trim() || '';
   if (guildId && !/^\d{17,20}$/.test(guildId)) throw new Error('DISCORD_GUILD_ID must be a Discord server ID.');
 
+  const maxPerDay = Number(process.env.AUTO_APPLY_MAX_PER_DAY || 5);
+  if (!Number.isInteger(maxPerDay) || maxPerDay < 1 || maxPerDay > 30) {
+    throw new Error('AUTO_APPLY_MAX_PER_DAY must be an integer from 1 to 30.');
+  }
+  const autoApplyEnabled = parseBoolean(process.env.AUTO_APPLY_ENABLED, false, 'AUTO_APPLY_ENABLED');
+  const allowedHosts = parseAllowedHosts(process.env.AUTO_APPLY_ALLOWED_HOSTS);
+  if (autoApplyEnabled && allowedHosts.size === 0 && !smtpConfigured) {
+    throw new Error('Autopilot needs at least one AUTO_APPLY_ALLOWED_HOSTS domain or a complete SMTP configuration.');
+  }
+
   return {
     discordToken: required('DISCORD_TOKEN'),
     discordClientId: required('DISCORD_CLIENT_ID'),
@@ -61,13 +93,21 @@ export function loadConfig() {
     openAiModel: required('OPENAI_MODEL'),
     baseCvFile: path.resolve(root, process.env.BASE_CV_FILE || './private/base-cv.md'),
     profileFile: path.resolve(root, process.env.PROFILE_FILE || './private/profile.md'),
+    applicationProfileFile: path.resolve(root, process.env.APPLICATION_PROFILE_FILE || './private/application-profile.json'),
+    browserProfileDir: path.resolve(root, process.env.BROWSER_PROFILE_DIR || './private/browser-profile'),
     dataFile: path.resolve(root, './data/jobs.json'),
     generatedDir: path.resolve(root, './data/generated'),
+    autoApply: {
+      enabled: autoApplyEnabled,
+      allowedHosts,
+      headless: parseBoolean(process.env.AUTO_APPLY_HEADLESS, true, 'AUTO_APPLY_HEADLESS'),
+      maxPerDay,
+    },
     smtp: {
       configured: smtpConfigured,
       host: smtpHost,
       port: parsePort(process.env.SMTP_PORT),
-      secure: parseBoolean(process.env.SMTP_SECURE, false),
+      secure: parseBoolean(process.env.SMTP_SECURE, false, 'SMTP_SECURE'),
       user: smtpUser,
       pass: smtpPass,
       from: smtpFrom,
