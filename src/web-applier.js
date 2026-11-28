@@ -1,13 +1,11 @@
 import { chromium } from 'playwright';
-import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
-import { safeFilePart } from './utils.js';
 
 function normaliseLabel(value) {
   return String(value ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
-function protectedQuestion(label) {
+export function protectedQuestion(label) {
   return /\b(disability|disabled|medical|health|race|ethnic|ethnicity|gender|sexual orientation|religion|belief|veteran|military service|criminal record|conviction|background check consent|date of birth|birth date|age|equal opportunity|diversity|demographic|i certify|i attest|i agree|terms and conditions|electronic signature|signature|consent)\b/i.test(label);
 }
 
@@ -27,20 +25,30 @@ export function hostIsAllowed(rawUrl, allowedHosts) {
   } catch { return false; }
 }
 
-function resolveCandidateValue(meta, profile) {
+export function emailDomainIsAllowed(email, allowedDomains) {
+  if (typeof email !== 'string' || !email.includes('@')) return false;
+  const domain = email.split('@').at(-1).toLowerCase();
+  return [...(allowedDomains ?? [])].some((allowed) => {
+    const normal = String(allowed).trim().toLowerCase();
+    return normal && (domain === normal || domain.endsWith('.' + normal));
+  });
+}
+
+export function resolveCandidateValue(meta, profile) {
   const label = fieldContext(meta);
   if (protectedQuestion(label)) return { kind: 'blocked', reason: 'Protected, legal, or consent question.' };
 
   const personal = profile.personal ?? {};
   const work = profile.workAuthorisation ?? {};
   const answers = profile.answers ?? {};
-  const explicitAnswer = Object.entries(answers).find(([key]) => normaliseLabel(key) === normaliseLabel(meta.label));
+  const targetLabel = normaliseLabel(meta.label || meta.ariaLabel || meta.name || meta.id);
+  const explicitAnswer = Object.entries(answers).find(([key]) => normaliseLabel(key) === targetLabel);
   if (explicitAnswer && String(explicitAnswer[1] ?? '').trim()) {
     return { kind: 'value', value: String(explicitAnswer[1]).trim() };
   }
 
   const rules = [
-    [/\b(first name|given name|forename)\b|given name/i, personal.firstName],
+    [/\b(first name|given name|forename)\b/i, personal.firstName],
     [/\b(last name|family name|surname)\b/i, personal.lastName],
     [/\b(full name|candidate name|applicant name)\b/i, [personal.firstName, personal.lastName].filter(Boolean).join(' ')],
     [/\b(email|e mail|email address)\b/i, personal.email],
@@ -142,6 +150,10 @@ export async function submitApplicationWithBrowser({ job, profile, pack, config 
 
     const form = await chooseApplicationForm(page);
     if (!form) return { outcome: 'skipped', reason: 'No unambiguous application form was found.' };
+    const formAction = await form.evaluate((element) => element.action || window.location.href);
+    if (!hostIsAllowed(formAction, config.autoApply.allowedHosts)) {
+      return { outcome: 'skipped', reason: 'The application form posts to a host outside the configured allowlist.' };
+    }
 
     const fields = form.locator('input,select,textarea');
     const count = await fields.count();
@@ -184,10 +196,6 @@ export async function submitApplicationWithBrowser({ job, profile, pack, config 
         if (match) await field.selectOption(match.value);
         else if (meta.required) unresolved.push(meta.label || meta.name || 'Required dropdown');
       } else {
-        if (['email', 'tel', 'url'].includes(meta.type) && !String(mapped.value).trim()) {
-          if (meta.required) unresolved.push(meta.label || meta.name || 'Required contact field');
-          continue;
-        }
         await field.fill(String(mapped.value));
       }
     }
@@ -207,6 +215,9 @@ export async function submitApplicationWithBrowser({ job, profile, pack, config 
 
     await submitCandidates.first().click();
     submitted = true;
+    if (!hostIsAllowed(page.url(), config.autoApply.allowedHosts)) {
+      return { outcome: 'unknown', reason: 'The site redirected outside the allowlist after submitting. Check the application status before retrying.' };
+    }
     const confirmation = page.getByText(/application (has been )?(submitted|received)|thank you for applying|successfully applied|we have received your application/i).first();
     const confirmed = await confirmation.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
     if (confirmed) {
