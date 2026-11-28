@@ -18,6 +18,13 @@ export async function loadApplicationProfile(filePath) {
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     throw new Error('Application profile must be a JSON object.');
   }
+  const personal = profile.personal ?? {};
+  if (!personal.firstName || !personal.lastName || !personal.email) {
+    throw new Error('Set personal.firstName, personal.lastName, and personal.email in the application profile.');
+  }
+  if (!Array.isArray(profile.preferences?.keywords) || profile.preferences.keywords.length === 0) {
+    throw new Error('Set at least one target keyword in preferences.keywords before enabling autopilot.');
+  }
   return profile;
 }
 
