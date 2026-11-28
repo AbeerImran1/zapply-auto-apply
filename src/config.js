@@ -79,8 +79,9 @@ export function loadConfig() {
   }
   const autoApplyEnabled = parseBoolean(process.env.AUTO_APPLY_ENABLED, false, 'AUTO_APPLY_ENABLED');
   const allowedHosts = parseAllowedHosts(process.env.AUTO_APPLY_ALLOWED_HOSTS);
-  if (autoApplyEnabled && allowedHosts.size === 0 && !smtpConfigured) {
-    throw new Error('Autopilot needs at least one AUTO_APPLY_ALLOWED_HOSTS domain or a complete SMTP configuration.');
+  const allowedEmailDomains = parseAllowedHosts(process.env.AUTO_APPLY_ALLOWED_EMAIL_DOMAINS);
+  if (autoApplyEnabled && allowedHosts.size === 0 && (!smtpConfigured || allowedEmailDomains.size === 0)) {
+    throw new Error('Autopilot needs an allowed web host or both SMTP settings and allowed email domains.');
   }
 
   return {
@@ -100,6 +101,7 @@ export function loadConfig() {
     autoApply: {
       enabled: autoApplyEnabled,
       allowedHosts,
+      allowedEmailDomains,
       headless: parseBoolean(process.env.AUTO_APPLY_HEADLESS, true, 'AUTO_APPLY_HEADLESS'),
       maxPerDay,
     },
