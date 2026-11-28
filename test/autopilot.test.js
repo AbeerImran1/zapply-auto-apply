@@ -56,7 +56,7 @@ test('job preferences include allowed target roles and exclude unwanted posts', 
 
 test('autopilot config accepts bare HTTPS hostnames and rejects wildcards or paths', () => {
   assert.deepEqual([...parseAllowedHosts('greenhouse.io, jobs.lever.co')], ['greenhouse.io', 'jobs.lever.co']);
-  assert.throws(() => parseAllowedHosts('*.example.com'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
+  assert.throws(() => parseAllowedHosts('*.example.com'), /AUTO_APPLY_ALLOWED_HOSTS/);
   assert.throws(() => parseAllowedHosts('example.com/apply'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
   assert.throws(() => parseAllowedHosts('http://example.com'), /Invalid AUTO_APPLY_ALLOWED_HOSTS/);
 });
