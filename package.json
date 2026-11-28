@@ -19,6 +19,6 @@
     "nodemailer": "^10.6.1",
     "openai": "^7.65.0",
     "pdfkit": "^0.21.0",
-    "playwright": "^1.56.1"
+    "playwright": "^1.65.1"
   }
 }
