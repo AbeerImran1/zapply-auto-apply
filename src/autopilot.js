@@ -3,11 +3,18 @@ import { createApplicationPack } from './ai.js';
 import { createPdfFiles } from './documents.js';
 import { sendApplicationEmail, verifySmtp } from './mailer.js';
 import { getJob, listJobs, updateJobIf } from './storage.js';
-import { hostIsAllowed, submitApplicationWithBrowser } from './web-applier.js';
+import { emailDomainIsAllowed, hostIsAllowed, submitApplicationWithBrowser } from './web-applier.js';
+
+let queue = Promise.resolve();
+
+export function enqueueAutoApplication(jobId, config, logger = console) {
+  const task = queue.then(() => runAutoApplication(jobId, config, logger));
+  queue = task.catch((error) => logger.error('Autopilot queue error: ' + error.message));
+  return task;
+}
 
 export async function loadApplicationProfile(filePath) {
-  const raw = await readFile(filePath, 'utf8');
-  const profile = JSON.parse(raw);
+  const profile = JSON.parse(await readFile(filePath, 'utf8'));
   if (!profile || typeof profile !== 'object' || Array.isArray(profile)) {
     throw new Error('Application profile must be a JSON object.');
   }
@@ -15,8 +22,7 @@ export async function loadApplicationProfile(filePath) {
 }
 
 export function jobMatchesPreferences(job, preferences = {}) {
-  const haystack = [job.role, job.company, job.description, job.location, job.employmentType]
-    .join(' ').toLowerCase();
+  const haystack = [job.role, job.company, job.description, job.location, job.employmentType].join(' ').toLowerCase();
   const excluded = (preferences.excludeKeywords ?? []).map((x) => String(x).toLowerCase()).filter(Boolean);
   if (excluded.some((keyword) => haystack.includes(keyword))) return false;
   const included = (preferences.keywords ?? []).map((x) => String(x).toLowerCase()).filter(Boolean);
@@ -38,11 +44,11 @@ async function withinDailyLimit(config) {
   return completed < config.autoApply.maxPerDay;
 }
 
-async function prepare(job, config, profile) {
+async function prepare(job, config) {
   const claim = await updateJobIf(
     config.dataFile, job.id,
     (current) => current.status === 'new' && current.deliveryState === 'not_sent',
-    (current) => ({ ...current, status: 'preparing', preparationStartedAt: new Date().toISOString(), approved: false }),
+    (current) => ({ ...current, status: 'preparing', autopilot: true, preparationStartedAt: new Date().toISOString(), approved: false }),
   );
   if (!claim.updated) return null;
 
@@ -56,7 +62,7 @@ async function prepare(job, config, profile) {
     const saved = await updateJobIf(
       config.dataFile, job.id,
       (current) => current.status === 'preparing' && current.deliveryState === 'not_sent',
-      (current) => ({ ...current, status: 'prepared', pack: { ...pack, ...files }, approved: false }),
+      (current) => ({ ...current, status: 'prepared', autopilot: true, pack: { ...pack, ...files }, approved: false }),
     );
     return saved.updated ? saved.job : null;
   } catch (error) {
@@ -69,9 +75,17 @@ async function prepare(job, config, profile) {
 
 export async function runAutoApplication(jobId, config, logger = console) {
   if (!config.autoApply.enabled) return { outcome: 'disabled' };
-  const job = await getJob(config.dataFile, jobId);
-  if (!job || job.status !== 'new' || job.deliveryState !== 'not_sent') return { outcome: 'not_eligible' };
-  if (!jobMatchesPreferences(job, config.autoApply.preferences)) {
+  let job = await getJob(config.dataFile, jobId);
+  if (!job || job.deliveryState !== 'not_sent') return { outcome: 'not_eligible' };
+  if (!['new', 'prepared'].includes(job.status)) return { outcome: 'not_eligible' };
+
+  let profile;
+  try { profile = await loadApplicationProfile(config.applicationProfileFile); }
+  catch (error) {
+    logger.error('Auto-apply profile could not be loaded: ' + error.message);
+    return { outcome: 'profile_error', reason: error.message };
+  }
+  if (!jobMatchesPreferences(job, profile.preferences ?? {})) {
     await updateJobIf(config.dataFile, jobId,
       (current) => current.status === 'new',
       (current) => ({ ...current, status: 'filtered_out', filteredAt: new Date().toISOString() }));
@@ -82,31 +96,26 @@ export async function runAutoApplication(jobId, config, logger = console) {
     return { outcome: 'daily_limit' };
   }
 
-  let profile;
-  try { profile = await loadApplicationProfile(config.applicationProfileFile); }
-  catch (error) {
-    logger.error('Auto-apply profile could not be loaded: ' + error.message);
-    return { outcome: 'profile_error', reason: error.message };
+  if (job.status === 'new') {
+    job = await prepare(job, config);
+    if (!job) return { outcome: 'not_eligible' };
+  } else if (!job.autopilot || !job.pack?.cvPath || !job.pack?.coverPath) {
+    return { outcome: 'not_eligible' };
   }
 
-  const prepared = await prepare(job, config, profile);
-  if (!prepared) return { outcome: 'not_eligible' };
-
-  if (prepared.applicationEmail && config.smtp.configured) {
-    try {
-      await verifySmtp(config.smtp);
-    } catch (error) {
+  if (job.applicationEmail && config.smtp.configured
+      && emailDomainIsAllowed(job.applicationEmail, config.autoApply.allowedEmailDomains)) {
+    try { await verifySmtp(config.smtp); }
+    catch (error) {
       await updateJobIf(config.dataFile, jobId,
         (current) => current.status === 'prepared',
         (current) => ({ ...current, status: 'needs_configuration', lastError: 'SMTP verification failed: ' + error.message }));
       return { outcome: 'needs_configuration', reason: error.message };
     }
-
     const claim = await updateJobIf(config.dataFile, jobId,
       (current) => current.status === 'prepared' && current.deliveryState === 'not_sent',
       (current) => ({ ...current, status: 'sending', deliveryState: 'sending', sendStartedAt: new Date().toISOString() }));
     if (!claim.updated) return { outcome: 'not_eligible' };
-
     try {
       const sent = await sendApplicationEmail({
         smtp: config.smtp, to: claim.job.applicationEmail,
@@ -124,7 +133,7 @@ export async function runAutoApplication(jobId, config, logger = console) {
     }
   }
 
-  if (prepared.applicationUrl && hostIsAllowed(prepared.applicationUrl, config.autoApply.allowedHosts)) {
+  if (job.applicationUrl && hostIsAllowed(job.applicationUrl, config.autoApply.allowedHosts)) {
     const claim = await updateJobIf(config.dataFile, jobId,
       (current) => current.status === 'prepared' && current.deliveryState === 'not_sent',
       (current) => ({ ...current, status: 'web_applying', deliveryState: 'web_sending', webStartedAt: new Date().toISOString() }));
@@ -152,6 +161,6 @@ export async function runAutoApplication(jobId, config, logger = console) {
 
   await updateJobIf(config.dataFile, jobId,
     (current) => current.status === 'prepared',
-    (current) => ({ ...current, status: 'needs_manual', lastError: 'No configured, supported application route was available.' }));
+    (current) => ({ ...current, status: 'needs_manual', lastError: 'No allowed application route was available.' }));
   return { outcome: 'needs_manual' };
 }
